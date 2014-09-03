@@ -9,8 +9,8 @@
 #define OUTHEIGHT 255
 
 double l_water = OUTHEIGHT / 5.0;
-double l_rocks = 2.0 * OUTHEIGHT / 3.0;
-double l_snow  = 4.0 * OUTHEIGHT / 5.0;
+double l_rocks = 0.6 * OUTHEIGHT;
+double l_snow  = 0.8 * OUTHEIGHT;
 
 typedef struct { int r; int g; int b; } colour;
 colour c_blank = { 0, 0, 0 };
@@ -221,12 +221,17 @@ printf("World has %d points\n", world.howmany);
 		}
 	}
 
+	double min_height = 10.0, max_height = -10.0;
+
 	for(i=0; i<world.howmany; i++) {
 		int px = (int)((world.points[i].x + 1.0) * (OUTSIZE/2.0));
 		int py = (int)((world.points[i].y + 1.0) * (OUTSIZE/2.0));
 if (px == 0) {
 	printf("Left EDGE: <%.5f,%.5f>\n", world.points[i].x, world.points[i].y);
 }
+		min_height = fmin(min_height, world.points[i].h);
+		max_height = fmax(max_height, world.points[i].h);
+
 		double scaled_height = (int)(OUTHEIGHT * (world.points[i].h + 0.2)/0.4);
 		pgm[px][py] = c_grass;
 
@@ -252,4 +257,6 @@ if (px == 0) {
 		}
 		fprintf(stderr, "\n");
 	}
+
+	printf("minH = %.5f, maxH = %.5f\n", min_height, max_height);
 }
