@@ -8,7 +8,19 @@
 #define OUTSIZE 512
 #define OUTHEIGHT 255
 
-int pgm[OUTSIZE][OUTSIZE];
+double l_water = OUTHEIGHT / 5.0;
+double l_rocks = 2.0 * OUTHEIGHT / 3.0;
+double l_snow  = 4.0 * OUTHEIGHT / 5.0;
+
+typedef struct { int r; int g; int b; } colour;
+colour c_blank = { 0, 0, 0 };
+colour c_water = { 0, 0, 255 };
+colour c_rocks = { 128, 128, 128 };
+colour c_grass = { 0, 255, 0 };
+colour c_snow  = { 255, 255, 255 };
+
+/* Strictly a ppm now but meh */
+colour pgm[OUTSIZE][OUTSIZE];
 
 typedef struct { float x; float y; float h; int iteration; int parent; } point;
 typedef struct { point points[MAXPOINTS]; int howmany; } landscape;
@@ -205,7 +217,7 @@ printf("World has %d points\n", world.howmany);
 
 	for(i=0; i<OUTSIZE; i++) {
 		for(j=0; j<OUTSIZE; j++) {
-			pgm[i][j] = 0;
+			pgm[i][j] = c_blank;
 		}
 	}
 
@@ -215,13 +227,27 @@ printf("World has %d points\n", world.howmany);
 if (px == 0) {
 	printf("Left EDGE: <%.5f,%.5f>\n", world.points[i].x, world.points[i].y);
 }
-		pgm[px][py] = (int)(OUTHEIGHT * (world.points[i].h + 0.2)/0.4);
+		double scaled_height = (int)(OUTHEIGHT * (world.points[i].h + 0.2)/0.4);
+		pgm[px][py] = c_grass;
+
+		if (scaled_height < l_water) {
+			pgm[px][py] = c_water;
+		}
+
+		if (scaled_height > l_rocks) { 
+			pgm[px][py] = c_rocks;
+		}
+
+		if (scaled_height > l_snow) { 
+			pgm[px][py] = c_snow;
+		}
 	}
 
-	fprintf(stderr, "P2 %d %d 255\n", OUTSIZE, OUTSIZE);
+	fprintf(stderr, "P3 %d %d 255\n", OUTSIZE, OUTSIZE);
 	for(i=0; i<OUTSIZE; i++) {
 		for(j=0; j<OUTSIZE; j++) {
-			fprintf(stderr, "%d ", pgm[i][j]);
+			colour t = pgm[i][j];
+			fprintf(stderr, "%d %d %d ", t.r, t.g, t.b);
 			if (j % 15 == 14) { fprintf(stderr, "\n"); }
 		}
 		fprintf(stderr, "\n");
