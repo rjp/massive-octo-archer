@@ -8,13 +8,17 @@
 #define OUTSIZE 512
 #define OUTHEIGHT 255
 
-double l_water = OUTHEIGHT / 5.0;
+double l_water = 0.2 * OUTHEIGHT;
+double l_sand  = 0.25 * OUTHEIGHT;
+double l_dirt  = 0.55 * OUTHEIGHT;
 double l_rocks = 0.6 * OUTHEIGHT;
 double l_snow  = 0.8 * OUTHEIGHT;
 
 typedef struct { int r; int g; int b; } colour;
 colour c_blank = { 0, 0, 0 };
 colour c_water = { 0, 0, 255 };
+colour c_sand  = { 255, 192, 64 };
+colour c_dirt  = { 128, 64, 0 };
 colour c_rocks = { 128, 128, 128 };
 colour c_grass = { 0, 255, 0 };
 colour c_snow  = { 255, 255, 255 };
@@ -235,8 +239,16 @@ if (px == 0) {
 		double scaled_height = (int)(OUTHEIGHT * (world.points[i].h + 0.2)/0.4);
 		pgm[px][py] = c_grass;
 
+		if (scaled_height < l_sand) {
+			pgm[px][py] = c_sand;
+		}
+
 		if (scaled_height < l_water) {
 			pgm[px][py] = c_water;
+		}
+
+		if (scaled_height > l_dirt) { 
+			pgm[px][py] = c_dirt;
 		}
 
 		if (scaled_height > l_rocks) { 
