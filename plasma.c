@@ -8,14 +8,16 @@
 #define OUTSIZE 512
 #define OUTHEIGHT 255
 
-double l_water = 0.2 * OUTHEIGHT;
+double l_ocean = 0.15 * OUTHEIGHT;
+double l_water = 0.20 * OUTHEIGHT;
 double l_sand  = 0.25 * OUTHEIGHT;
 double l_dirt  = 0.55 * OUTHEIGHT;
-double l_rocks = 0.6 * OUTHEIGHT;
-double l_snow  = 0.8 * OUTHEIGHT;
+double l_rocks = 0.60 * OUTHEIGHT;
+double l_snow  = 0.80 * OUTHEIGHT;
 
 typedef struct { int r; int g; int b; int a; } colour;
 colour c_blank = { 0, 0, 0, 0 };
+colour c_ocean = { 0, 0, 128, 1 };
 colour c_water = { 0, 0, 255, 1 };
 colour c_sand  = { 255, 192, 64, 1 };
 colour c_dirt  = { 128, 64, 0, 1 };
@@ -166,29 +168,91 @@ assert(! isnan(t[i].h));
 }
 
 colour
+shade_of_x(int r, int g, int b, int ratio)
+{
+	int m = randi(2*ratio) - ratio;
+	r = fmax(0, fmin(255, r + m));
+	g = fmax(0, fmin(255, g + m));
+	b = fmax(0, fmin(255, b + m));
+	return (colour){ r, g, b, 1 };
+}
+
+colour
+colour_of_x(int r, int g, int b, int rr, int gr, int br)
+{
+	r = fmax(0, fmin(255, r + randi(2*rr) - rr));
+	g = fmax(0, fmin(255, g + randi(2*gr) - gr));
+	b = fmax(0, fmin(255, b + randi(2*br) - br));
+	return (colour){ r, g, b, 1 };
+}
+
+colour
+colour_of_grass(void)
+{
+	return colour_of_x(32, 192, 32, 32, 32, 32);
+}
+
+colour
+colour_of_snow(void)
+{
+	/* We want all the sliders to move up and down in lockstep */
+	return shade_of_x(255, 255, 255, 32);
+}
+
+colour
+colour_of_rocks(void)
+{
+	return shade_of_x(c_rocks.r, c_rocks.g, c_rocks.b, 32);
+}
+
+colour
+colour_of_dirt(void)
+{
+	return shade_of_x(c_dirt.r, c_dirt.g, c_dirt.b, 32);
+}
+
+colour
+colour_of_sand(void)
+{
+	return shade_of_x(c_sand.r, c_sand.g, c_sand.b, 16);
+}
+
+colour
+colour_of_water(void)
+{
+	return colour_of_x(c_water.r, c_water.g, c_water.b, 32, 32, 32);
+}
+
+/* We need a clever multi-stage MACRO here to auto-generate these for us */
+
+colour
 colour_by_height(double unscaled_height)
 {
 	double scaled_height = (int)(OUTHEIGHT * (unscaled_height + 0.2)/0.4);
-	colour blocks = c_grass;
+	colour blocks = colour_of_grass();
 
 	if (scaled_height < l_sand) {
-		blocks = c_sand;
+		blocks = colour_of_sand();
 	}
 
 	if (scaled_height < l_water) {
-		blocks = c_water;
+		blocks = colour_of_water();
+	}
+
+	if (scaled_height < l_ocean) {
+		blocks = c_ocean;
 	}
 
 	if (scaled_height > l_dirt) { 
-		blocks = c_dirt;
+		blocks = colour_of_dirt();
 	}
 
 	if (scaled_height > l_rocks) { 
-		blocks = c_rocks;
+		blocks = colour_of_rocks();
 	}
 
 	if (scaled_height > l_snow) { 
-		 blocks = c_snow;
+		 blocks = colour_of_snow();
 	}
 
 	return blocks;
@@ -283,6 +347,7 @@ if (px == 0) {
 					double d = pow(p.x-tx,2) + pow(p.y-ty,2);
 					if (d < min_dist) { min_dist = d; min_point = p; }
 				}
+				srand(1000*min_point.x + 1000*min_point.y);
 				pgm[i][j] = colour_by_height(min_point.h);
 			}
 
