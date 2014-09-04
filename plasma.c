@@ -29,7 +29,7 @@ colour c_bork  = { 255, 0, 0, 1};
 /* Strictly a ppm now but meh */
 colour pgm[OUTSIZE][OUTSIZE];
 
-typedef struct { float x; float y; float h; int iteration; int parent; } point;
+typedef struct { float x; float y; float h; int iteration; int parent; colour c; } point;
 typedef struct { point points[MAXPOINTS]; int howmany; } landscape;
 
 /* Working array for temporary points */
@@ -283,7 +283,6 @@ colour_by_height(double unscaled_height)
 	return blocks;
 }
 
-int main(void) {
 	int i, j, q, gen;
 	landscape world;
 
@@ -294,6 +293,7 @@ int main(void) {
 		world.points[i] = (point){
 			0.25*m1_p1(), 0.25*m1_p1(), 0.1*m1_p1(), 0, -1
 		};
+		world.points[i].c = colour_by_height(world.points[i].h);
 		world.howmany = i+1;
 	}
 	puts("Initial world");
@@ -375,6 +375,7 @@ if (px == 0) {
 				pgm[i][j] = colour_by_height(min_point.h);
 			}
 
+				pgm[i][j] = min_point.c;
 		}
 	}
 
