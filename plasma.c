@@ -110,63 +110,18 @@ dump_temp()
 	}
 }
 
-void
-interpolate(point t[], int howmany, landscape w, int generation)
+typedef struct { double d; int i; } di;
+di sorted[MAXPOINTS];
+
+int
+compare_dist(const void *a, const void *b)
 {
-	int i,j;
-	double reduction = pow(0.5, generation);
-	
-	for(i=0; i<howmany; i++) {
-		double dsq[MAXPOINTS]; /* enough headroom */
-		double total_d = 0;
-		point ip = t[i];
-		double i_height = 0.0;
-		double d_threshold = 9999999.0;
-		
-		if (w.howmany > 20) {
-			d_threshold = 4.0;
-		}
+	const di *va = a;
+	const di *vb = b;
 
-		/* First we work out the individual distances and total distance */
-		for(j=0; j<w.howmany; j++) {	
-			point wp = w.points[j];
-			double d = pow(wp.x-ip.x,2) + pow(wp.y-ip.y,2);
-			double dr2;
-			if (d > 0.0) {
-				if (d <= d_threshold) {
-					dr2 = 1.0 / pow(d, 2);
-					total_d = total_d + dr2;
-					dsq[j] = dr2;
-				}
-				else {
-					total_d = total_d + 0.0;
-					dsq[j] = 0.0;
-				}
-			}
-			else {
-				total_d = total_d + 0.0;
-				dsq[j] = 0.0;
-			}
-		}
-
-		for(j=0; j<w.howmany; j++) {
-			double d = dsq[j];
-			double r = d;
-			i_height = i_height + w.points[j].h * r;
-		}
-
-		assert(total_d != 0.0);
-
-		t[i].h = i_height / total_d;
-if(isnan(t[i].h)) {
-	for(j=0; j<w.howmany; j++) {
-		printf("%d dr2=%.6f\n", j, dsq[j]);
-	}
-	printf("%.6f / %.6f isnan\n", i_height, total_d);
-}
-assert(! isnan(t[i].h));
-		t[i].h = t[i].h + reduction * 0.1 * m1_p1();
-	}
+	if (vb->d > va->d) { return -1; }
+	if (vb->d < va->d) { return +1; }
+	return 0;
 }
 
 colour
@@ -216,12 +171,6 @@ colour
 colour_of_rocks(void)
 {
 	return shade_of_x(c_rocks.r, c_rocks.g, c_rocks.b, 32);
-}
-
-colour
-colour_of_dirt(void)
-{
-	return shade_of_x(c_dirt.r, c_dirt.g, c_dirt.b, 32);
 }
 
 colour
@@ -281,6 +230,70 @@ colour_by_height(double unscaled_height)
 	}
 
 	return blocks;
+}
+
+
+void
+interpolate(point t[], int howmany, landscape w, int generation)
+{
+	int i,j;
+	double reduction = pow(0.5, generation);
+	
+printf("generation %d, %d world points, %d temp points\n", generation, w.howmany, howmany);
+
+	for(i=0; i<howmany; i++) {
+		double dsq[MAXPOINTS]; /* enough headroom */
+		double total_d = 0.0;
+		point ip = t[i];
+		double i_height = 0.0;
+printf("interpolating new point %d: ", i);
+
+		/* First we work out the individual distances and store them */
+		for(j=0; j<w.howmany; j++) {	
+			point wp = w.points[j];
+			double d = pow(wp.x-ip.x,2) + pow(wp.y-ip.y,2);
+			sorted[j] = (di){ d, j };
+printf("<%d, %.4f, %.4f> ", j, d, wp.h);
+		}
+puts("");
+
+		qsort(sorted, w.howmany, sizeof(di), compare_dist);
+printf("<%d, %.4f>\n", sorted[0].i, sorted[0].d);
+			
+		/* We only get here after one generation of spawning which
+		   means we have at least 12 points to consider
+ 		*/
+		int lim = w.howmany > 10 ? 10 : w.howmany;
+
+		for(j=0; j<lim; j++) {
+			double d = sorted[j].d;
+			if (d > 0.0) { /* && d < 1.0) { */
+				double dr2 = 1.0 / pow(d, 2);
+				total_d = total_d + dr2;
+				dsq[j] = dr2;
+			}
+			else {
+				dsq[j] = 0.0;
+			}
+		}
+
+printf("%d points, total=%.4f, first=%.4f ratio=%.4f\n", lim, total_d, sorted[0].d, 1.0/(pow(sorted[0].d,2)));
+
+		for(j=0; j<lim; j++) {
+			double r = dsq[j];
+/*			double n_height = w.points[j].h * r; */
+			double n_height = w.points[sorted[j].i].h * r;
+			i_height = i_height + n_height;
+printf("point %d, h=%.4f, invsqlaw=%.4f, adding=%.4f, total=%.4f\n", j, w.points[j].h, r, n_height, i_height);
+		}
+
+		t[i].h = i_height / total_d;
+
+printf("final height = %.4f / %.4f = %.4f\n", i_height, total_d, t[i].h);
+
+ 		t[i].h = t[i].h + reduction * 0.1 * m1_p1(); 
+		t[i].c = colour_by_height(t[i].h);
+	}
 }
 
 int main(int argc, char **argv) {
