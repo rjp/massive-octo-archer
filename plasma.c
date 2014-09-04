@@ -365,7 +365,7 @@ printf("World has %d points\n", world.howmany);
 	for(i=0; i<OUTSIZE; i++) {
 		for(j=0; j<OUTSIZE; j++) {
 			colour t = pgm[i][j];
-			if (t.a == 0) {
+/*			if (t.a == 0) { */
 				/* Uncoloured pixel needs voronoising */
 				double min_dist = 999.0;
 				point min_point;
@@ -377,10 +377,10 @@ printf("World has %d points\n", world.howmany);
 					double d = pow(p.x-tx,2) + pow(p.y-ty,2);
 					if (d < min_dist) { min_dist = d; min_point = p; }
 				}
-				pgm[i][j] = colour_by_height(min_point.h);
-			}
-
 				pgm[i][j] = min_point.c;
+		 /* } */	
+			/* Highlight the original points */
+/* 			if (t.a == 1) { pgm[i][j] = c_blank; } */
 		}
 	}
 
