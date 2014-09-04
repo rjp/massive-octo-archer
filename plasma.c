@@ -14,14 +14,15 @@ double l_dirt  = 0.55 * OUTHEIGHT;
 double l_rocks = 0.6 * OUTHEIGHT;
 double l_snow  = 0.8 * OUTHEIGHT;
 
-typedef struct { int r; int g; int b; } colour;
-colour c_blank = { 0, 0, 0 };
-colour c_water = { 0, 0, 255 };
-colour c_sand  = { 255, 192, 64 };
-colour c_dirt  = { 128, 64, 0 };
-colour c_rocks = { 128, 128, 128 };
-colour c_grass = { 0, 255, 0 };
-colour c_snow  = { 255, 255, 255 };
+typedef struct { int r; int g; int b; int a; } colour;
+colour c_blank = { 0, 0, 0, 0 };
+colour c_water = { 0, 0, 255, 1 };
+colour c_sand  = { 255, 192, 64, 1 };
+colour c_dirt  = { 128, 64, 0, 1 };
+colour c_rocks = { 128, 128, 128, 1 };
+colour c_grass = { 0, 255, 0, 1 };
+colour c_snow  = { 255, 255, 255, 1 };
+colour c_bork  = { 255, 0, 0, 1};
 
 /* Strictly a ppm now but meh */
 colour pgm[OUTSIZE][OUTSIZE];
@@ -164,9 +165,37 @@ assert(! isnan(t[i].h));
 	}
 }
 
+colour
+colour_by_height(double unscaled_height)
+{
+	double scaled_height = (int)(OUTHEIGHT * (unscaled_height + 0.2)/0.4);
+	colour blocks = c_grass;
+
+	if (scaled_height < l_sand) {
+		blocks = c_sand;
+	}
+
+	if (scaled_height < l_water) {
+		blocks = c_water;
+	}
+
+	if (scaled_height > l_dirt) { 
+		blocks = c_dirt;
+	}
+
+	if (scaled_height > l_rocks) { 
+		blocks = c_rocks;
+	}
+
+	if (scaled_height > l_snow) { 
+		 blocks = c_snow;
+	}
+
+	return blocks;
+}
 
 int main(void) {
-	int i, j, gen;
+	int i, j, q, gen;
 	landscape world;
 
 	srand(time(NULL));
@@ -236,27 +265,27 @@ if (px == 0) {
 		min_height = fmin(min_height, world.points[i].h);
 		max_height = fmax(max_height, world.points[i].h);
 
-		double scaled_height = (int)(OUTHEIGHT * (world.points[i].h + 0.2)/0.4);
-		pgm[px][py] = c_grass;
+		pgm[px][py] = colour_by_height(world.points[i].h);
+	}
 
-		if (scaled_height < l_sand) {
-			pgm[px][py] = c_sand;
-		}
+	for(i=0; i<OUTSIZE; i++) {
+		for(j=0; j<OUTSIZE; j++) {
+			colour t = pgm[i][j];
+			if (t.a == 0) {
+				/* Uncoloured pixel needs voronoising */
+				double min_dist = 999.0;
+				point min_point;
+				double tx = i/(OUTSIZE/2.0) - 1.0;
+				double ty = j/(OUTSIZE/2.0) - 1.0;
 
-		if (scaled_height < l_water) {
-			pgm[px][py] = c_water;
-		}
+				for(q=0; q<world.howmany; q++) {
+					point p = world.points[q];
+					double d = pow(p.x-tx,2) + pow(p.y-ty,2);
+					if (d < min_dist) { min_dist = d; min_point = p; }
+				}
+				pgm[i][j] = colour_by_height(min_point.h);
+			}
 
-		if (scaled_height > l_dirt) { 
-			pgm[px][py] = c_dirt;
-		}
-
-		if (scaled_height > l_rocks) { 
-			pgm[px][py] = c_rocks;
-		}
-
-		if (scaled_height > l_snow) { 
-			pgm[px][py] = c_snow;
 		}
 	}
 
