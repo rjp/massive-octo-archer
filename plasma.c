@@ -290,7 +290,7 @@ int main(void) {
 	srand(time(NULL));
 
 	/* Generate the initial set of 3 points around the origin */
-	for(i=0; i<3; i++) {
+	for(i=0; i<5; i++) {
 		world.points[i] = (point){
 			0.25*m1_p1(), 0.25*m1_p1(), 0.1*m1_p1(), 0, -1
 		};
