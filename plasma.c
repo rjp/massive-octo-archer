@@ -372,7 +372,6 @@ if (px == 0) {
 					double d = pow(p.x-tx,2) + pow(p.y-ty,2);
 					if (d < min_dist) { min_dist = d; min_point = p; }
 				}
-				srand(1000*min_point.x + 1000*min_point.y);
 				pgm[i][j] = colour_by_height(min_point.h);
 			}
 
