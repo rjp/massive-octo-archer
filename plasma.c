@@ -355,9 +355,7 @@ printf("World has %d points\n", world.howmany);
 	for(i=0; i<world.howmany; i++) {
 		int px = (int)((world.points[i].x + 1.0) * (OUTSIZE/2.0));
 		int py = (int)((world.points[i].y + 1.0) * (OUTSIZE/2.0));
-if (px == 0) {
-	printf("Left EDGE: <%.5f,%.5f>\n", world.points[i].x, world.points[i].y);
-}
+
 		min_height = fmin(min_height, world.points[i].h);
 		max_height = fmax(max_height, world.points[i].h);
 
