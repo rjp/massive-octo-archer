@@ -307,7 +307,7 @@ int main(int argc, char **argv) {
 	dump_points(world);
 
 	for(gen=1; gen<6; gen++) {
-		double reduction = pow(0.75, gen);
+		double reduction = pow(0.8, gen);
 
 			/* Iteration step */
 			printf("Iteration step %d\n", gen);
