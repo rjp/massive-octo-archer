@@ -283,10 +283,17 @@ colour_by_height(double unscaled_height)
 	return blocks;
 }
 
+int main(int argc, char **argv) {
 	int i, j, q, gen;
 	landscape world;
+	int seed = time(NULL);
 
-	srand(time(NULL));
+	if (argc > 1) {
+		seed = atoi(argv[1]);
+		printf("SEED %d\n", seed);
+	}
+
+	srand(seed);
 
 	/* Generate the initial set of 3 points around the origin */
 	for(i=0; i<5; i++) {
