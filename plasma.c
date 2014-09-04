@@ -8,12 +8,12 @@
 #define OUTSIZE 1024
 #define OUTHEIGHT 255
 
-double l_ocean = 0.15 * OUTHEIGHT;
-double l_water = 0.20 * OUTHEIGHT;
-double l_sand  = 0.25 * OUTHEIGHT;
-double l_dirt  = 0.55 * OUTHEIGHT;
-double l_rocks = 0.60 * OUTHEIGHT;
-double l_snow  = 0.80 * OUTHEIGHT;
+double l_ocean = 0.10;
+double l_water = 0.20;
+double l_sand  = 0.25;
+double l_dirt  = 0.65;
+double l_rocks = 0.70;
+double l_snow  = 0.80;
 
 typedef struct { int r; int g; int b; int a; } colour;
 colour c_blank = { 0, 0, 0, 0 };
@@ -35,6 +35,8 @@ typedef struct { point points[MAXPOINTS]; int howmany; } landscape;
 /* Working array for temporary points */
 point temp[MAXPOINTS];
 int temp_howmany;
+
+int greyscale = 0;
 
 /* Lifted from
  * http://phoxis.org/2013/05/04/generating-random-numbers-from-normal-distribution-in-c/
@@ -187,8 +189,19 @@ colour_of_x(int r, int g, int b, int rr, int gr, int br)
 }
 
 colour
+colour_of_dirt(void)
+{
+	return shade_of_x(c_dirt.r, c_dirt.g, c_dirt.b, 32);
+}
+
+colour
 colour_of_grass(void)
 {
+	/* 1d20 > 18 for grass -> dirt transformation */
+	if (randi(20) > 19) {
+		return colour_of_dirt();
+	}
+		
 	return colour_of_x(32, 192, 32, 32, 32, 32);
 }
 
@@ -224,12 +237,24 @@ colour_of_water(void)
 }
 
 /* We need a clever multi-stage MACRO here to auto-generate these for us */
+int
+clamp(int in, int low, int high)
+{
+	if (in < low) { return low; }
+	if (in > high) { return high; }
+	return in;
+}
 
 colour
 colour_by_height(double unscaled_height)
 {
-	double scaled_height = (int)(OUTHEIGHT * (unscaled_height + 0.2)/0.4);
+	double scaled_height = fmax( fmin( (unscaled_height + 0.2)/0.4, 1.0 ), 0.0 );
 	colour blocks = colour_of_grass();
+
+	if (greyscale) {
+		int x = clamp((int)(OUTHEIGHT * scaled_height), 0, OUTHEIGHT);
+		return (colour){x, x, x, 1};
+	}
 
 	if (scaled_height < l_sand) {
 		blocks = colour_of_sand();
