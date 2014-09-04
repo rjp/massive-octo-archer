@@ -4,8 +4,8 @@
 #include <time.h>
 #include <assert.h>
 
-#define MAXPOINTS 131072
-#define OUTSIZE 512
+#define MAXPOINTS 32768
+#define OUTSIZE 1024
 #define OUTHEIGHT 255
 
 double l_ocean = 0.15 * OUTHEIGHT;
