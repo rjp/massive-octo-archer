@@ -6,6 +6,12 @@
 
 #define MAXPOINTS 32768
 #define OUTSIZE 1024
+#ifdef DEBUG
+#define debug(M, ...) fprintf(stderr, "DEBUG %s:%d: " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+#define debug(M, ...)
+#endif
+
 #define OUTHEIGHT 255
 
 double l_ocean = 0.10;
