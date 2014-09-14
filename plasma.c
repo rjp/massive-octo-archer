@@ -103,7 +103,7 @@ dump_points(landscape w)
 {
 	int i;
 	for(i=0; i<w.howmany; i++) {
-		printf("%d = <%.3f,%.3f,%.3f> g=%d p=%d\n", i, w.points[i].x, w.points[i].y, w.points[i].h, w.points[i].iteration, w.points[i].parent);
+		debug("%d = <%.3f,%.3f,%.3f> g=%d p=%d\n", i, w.points[i].x, w.points[i].y, w.points[i].h, w.points[i].iteration, w.points[i].parent);
 	}
 }
 
@@ -112,7 +112,7 @@ dump_temp()
 {
 	int i;
 	for(i=0; i<temp_howmany; i++) {
-		printf("%d = <%.3f,%.3f,%.3f> g=%d p=%d\n", i, temp[i].x, temp[i].y, temp[i].h, temp[i].iteration, temp[i].parent);
+		debug("%d = <%.3f,%.3f,%.3f> g=%d p=%d\n", i, temp[i].x, temp[i].y, temp[i].h, temp[i].iteration, temp[i].parent);
 	}
 }
 
@@ -245,26 +245,25 @@ interpolate(point t[], int howmany, landscape w, int generation)
 	int i,j;
 	double reduction = pow(0.5, generation);
 	
-printf("generation %d, %d world points, %d temp points\n", generation, w.howmany, howmany);
+debug("generation %d, %d world points, %d temp points\n", generation, w.howmany, howmany);
 
 	for(i=0; i<howmany; i++) {
 		double dsq[MAXPOINTS]; /* enough headroom */
 		double total_d = 0.0;
 		point ip = t[i];
 		double i_height = 0.0;
-printf("interpolating new point %d: ", i);
+debug("interpolating new point %d: ", i);
 
 		/* First we work out the individual distances and store them */
 		for(j=0; j<w.howmany; j++) {	
 			point wp = w.points[j];
 			double d = pow(wp.x-ip.x,2) + pow(wp.y-ip.y,2);
 			sorted[j] = (di){ d, j };
-printf("<%d, %.4f, %.4f> ", j, d, wp.h);
+debug("<%d, %.4f, %.4f> ", j, d, wp.h);
 		}
-puts("");
 
 		qsort(sorted, w.howmany, sizeof(di), compare_dist);
-printf("<%d, %.4f>\n", sorted[0].i, sorted[0].d);
+debug("<%d, %.4f>\n", sorted[0].i, sorted[0].d);
 			
 		/* We only get here after one generation of spawning which
 		   means we have at least 12 points to consider
@@ -283,19 +282,19 @@ printf("<%d, %.4f>\n", sorted[0].i, sorted[0].d);
 			}
 		}
 
-printf("%d points, total=%.4f, first=%.4f ratio=%.4f\n", lim, total_d, sorted[0].d, 1.0/(pow(sorted[0].d,2)));
+debug("%d points, total=%.4f, first=%.4f ratio=%.4f\n", lim, total_d, sorted[0].d, 1.0/(pow(sorted[0].d,2)));
 
 		for(j=0; j<lim; j++) {
 			double r = dsq[j];
 /*			double n_height = w.points[j].h * r; */
 			double n_height = w.points[sorted[j].i].h * r;
 			i_height = i_height + n_height;
-printf("point %d, h=%.4f, invsqlaw=%.4f, adding=%.4f, total=%.4f\n", j, w.points[j].h, r, n_height, i_height);
+debug("point %d, h=%.4f, invsqlaw=%.4f, adding=%.4f, total=%.4f\n", j, w.points[j].h, r, n_height, i_height);
 		}
 
 		t[i].h = i_height / total_d;
 
-printf("final height = %.4f / %.4f = %.4f\n", i_height, total_d, t[i].h);
+debug("final height = %.4f / %.4f = %.4f\n", i_height, total_d, t[i].h);
 
  		t[i].h = t[i].h + reduction * 0.1 * m1_p1(); 
 		t[i].c = colour_by_height(t[i].h);
@@ -309,7 +308,7 @@ int main(int argc, char **argv) {
 
 	if (argc > 1) {
 		seed = atoi(argv[1]);
-		printf("SEED %d\n", seed);
+		debug("SEED %d\n", seed);
 	}
 
 	srand(seed);
@@ -322,14 +321,13 @@ int main(int argc, char **argv) {
 		world.points[i].c = colour_by_height(world.points[i].h);
 		world.howmany = i+1;
 	}
-	puts("Initial world");
-	dump_points(world);
+	/* dump_points(world); */
 
 	for(gen=1; gen<6; gen++) {
 		double reduction = pow(0.8, gen);
 
 			/* Iteration step */
-			printf("Iteration step %d\n", gen);
+			debug("Iteration step %d\n", gen);
 
 			/* 0. Reset the count of how many temporary points we have */
 			temp_howmany = 0;
@@ -358,9 +356,8 @@ int main(int argc, char **argv) {
 			}
 	}
 
-	puts("Final world");
-	dump_points(world);
-printf("World has %d points\n", world.howmany);
+	/* dump_points(world); */
+debug("World has %d points\n", world.howmany);
 	/* pgm_voronoi(world); */
 
 	for(i=0; i<OUTSIZE; i++) {
@@ -413,5 +410,5 @@ printf("World has %d points\n", world.howmany);
 		fprintf(stderr, "\n");
 	}
 
-	printf("minH = %.5f, maxH = %.5f\n", min_height, max_height);
+	debug("minH = %.5f, maxH = %.5f\n", min_height, max_height);
 }
