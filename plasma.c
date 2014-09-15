@@ -341,7 +341,8 @@ int main(int argc, char **argv) {
 					fmax( fmin( parent.y + reduction*0.5*m1_p1(), 1 ), -1 ),
 					parent.h,
 					1,
-					parent_index
+					parent_index,
+                    (colour){-1,-1,-1} 
 				};
 				temp_howmany++;
 			}
@@ -351,6 +352,8 @@ int main(int argc, char **argv) {
 
 			/* Push the new points onto the end of the old points */
 			for(i=0; i<temp_howmany; i++) {
+                temp[i].c = colour_by_height(temp[i].h);
+                debug("new point %d has height %.2f and <%d,%d,%d>\n", i, temp[i].h, temp[i].c.r, temp[i].c.g, temp[i].c.b);
 				world.points[world.howmany] = temp[i];
 				world.howmany++;
 			}
@@ -368,6 +371,7 @@ debug("World has %d points\n", world.howmany);
 
 	double min_height = 10.0, max_height = -10.0;
 
+#if 0
 	for(i=0; i<world.howmany; i++) {
 		int px = (int)((world.points[i].x + 1.0) * (OUTSIZE/2.0));
 		int py = (int)((world.points[i].y + 1.0) * (OUTSIZE/2.0));
@@ -377,26 +381,33 @@ debug("World has %d points\n", world.howmany);
 
 		pgm[px][py] = colour_by_height(world.points[i].h);
 	}
+#endif
+
+    double span = 0.75;
+    double span2 = 2*span;
 
 	for(i=0; i<OUTSIZE; i++) {
 		for(j=0; j<OUTSIZE; j++) {
-			colour t = pgm[i][j];
-/*			if (t.a == 0) { */
-				/* Uncoloured pixel needs voronoising */
-				double min_dist = 999.0;
-				point min_point;
-				double tx = i/(OUTSIZE/2.0) - 1.0;
-				double ty = j/(OUTSIZE/2.0) - 1.0;
+            /* Uncoloured pixel needs voronoising */
+            double min_dist = 999.0;
+            point *min_point = NULL;
+            double tx = -span + (span2*i)/OUTSIZE;
+            double ty = -span + (span2*j)/OUTSIZE;
 
-				for(q=0; q<world.howmany; q++) {
-					point p = world.points[q];
-					double d = pow(p.x-tx,2) + pow(p.y-ty,2);
-					if (d < min_dist) { min_dist = d; min_point = p; }
-				}
-				pgm[i][j] = min_point.c;
-		 /* } */	
-			/* Highlight the original points */
-/* 			if (t.a == 1) { pgm[i][j] = c_blank; } */
+            for(q=0; q<world.howmany; q++) {
+                point p = world.points[q];
+                double d = pow(p.x-tx,2) + pow(p.y-ty,2);
+                debug("<%.2f,%.2f> <=> <%.2f,%.2f> = %.5f (%.5f)\n", tx,ty, p.x,p.y, d, min_dist);
+                if (d < min_dist) { min_dist = d; min_point = &(world.points[q]); }
+            }
+            assert(min_point != NULL);
+
+            debug("mp <%.2f,%.2f> is %.5f from <%.2f, %.2f>, {%d,%d,%d}\n", min_point->x, min_point->y, min_dist, tx,ty, min_point->c.r, min_point->c.g, min_point->c.b);
+            if (min_point->c.r == -1) {
+                min_point->c = colour_by_height(min_point->h);
+            }
+
+            pgm[i][j] = min_point->c;
 		}
 	}
 
