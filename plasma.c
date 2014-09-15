@@ -4,6 +4,7 @@
 #include <time.h>
 #include <sys/queue.h>
 #include <assert.h>
+#include <getopt.h>
 
 #define OUTSIZE 512
 #ifdef DEBUG
@@ -33,7 +34,7 @@ colour c_snow  = { 255, 255, 255, 1 };
 colour c_bork  = { 255, 0, 0, 1};
 
 /* Strictly a ppm now but meh */
-colour pgm[OUTSIZE][OUTSIZE];
+colour **pgm;
 
 typedef struct { float x; float y; float h; int iteration; int parent; colour c; } point;
 typedef struct { int howmany; } landscape;
@@ -326,13 +327,53 @@ debug("final height = %.4f / %.4f = %.4f\n", i_height, total_d, t[i].h);
 int main(int argc, char **argv) {
 	int i, j, q, gen;
 	landscape world;
-	int seed = time(NULL);
+	static int seed;
     int initial_points = 5;
-    int iterations = 6;
+    static int iterations = 6;
     int maxpoints = initial_points;
-
     struct mainlist_h mainlist = TAILQ_HEAD_INITIALIZER(mainlist);
     struct templist_h templist = TAILQ_HEAD_INITIALIZER(templist);
+    static int size = OUTSIZE;
+    static double span = 0.75;
+
+    seed = time(NULL);
+
+    int c;
+    while (1) {
+        static struct option long_options[] = {
+            {"iterations", optional_argument, &iterations, 'i'},
+            {"size", optional_argument, &size, 'w'},
+            {"seed", optional_argument, &seed, 's'},
+            {"span", optional_argument, &span, 'v'},
+            {0, 0, 0, 0}
+        };
+        int option_index = 0;
+        c = getopt_long(argc, argv, "i:s:w:v:", long_options, &option_index);
+
+        if (c == -1) { break; }
+
+        switch(c) {
+            case 'i':
+                printf("ITERATIONS = %s\n", optarg);
+                iterations = atoi(optarg);
+                break;
+            case 'w':
+                printf("OUTSIZE = %s\n", optarg);
+                size = atoi(optarg);
+                break;
+            case 's':
+                printf("SEED = %s\n", optarg);
+                seed = atoi(optarg);
+                break;
+            case 'v':
+                printf("SPAN = %s\n", optarg);
+                span = atof(optarg);
+                break;
+
+            default:
+                abort();
+        }
+    }
 
     for(i=1; i<iterations; i++) {
         maxpoints = maxpoints + 3*maxpoints;
@@ -345,11 +386,10 @@ int main(int argc, char **argv) {
     sorted = (di *)malloc((maxpoints+1)*sizeof(di));
     assert(sorted != NULL);
 
-	if (argc > 1) {
-		seed = atoi(argv[1]);
-		debug("SEED %d\n", seed);
-	}
+    colour (*pgm)[size] = malloc(sizeof *pgm * size);
+    assert(pgm != NULL);
 
+    debug("SEED %d\n", seed);
 	srand(seed);
 
 	/* Generate the initial set of 3 points around the origin */
@@ -428,8 +468,8 @@ int main(int argc, char **argv) {
 debug("World has %d points\n", world.howmany);
 	/* pgm_voronoi(world); */
 
-	for(i=0; i<OUTSIZE; i++) {
-		for(j=0; j<OUTSIZE; j++) {
+	for(i=0; i<size; i++) {
+		for(j=0; j<size; j++) {
 			pgm[i][j] = c_blank;
 		}
 	}
@@ -448,16 +488,15 @@ debug("World has %d points\n", world.howmany);
 	}
 #endif
 
-    double span = 0.333;
     double span2 = 2*span;
 
-	for(i=0; i<OUTSIZE; i++) {
-		for(j=0; j<OUTSIZE; j++) {
+	for(i=0; i<size; i++) {
+		for(j=0; j<size; j++) {
             /* Uncoloured pixel needs voronoising */
             double min_dist = 999.0;
             point *min_point = NULL;
-            double tx = -span + (span2*i)/OUTSIZE;
-            double ty = -span + (span2*j)/OUTSIZE;
+            double tx = -span + (span2*i)/size;
+            double ty = -span + (span2*j)/size;
 
             TAILQ_FOREACH(np, &mainlist, entries) {
                 point p = np->p;
@@ -476,9 +515,9 @@ debug("World has %d points\n", world.howmany);
 		}
 	}
 
-	fprintf(stderr, "P3 %d %d 255\n", OUTSIZE, OUTSIZE);
-	for(i=0; i<OUTSIZE; i++) {
-		for(j=0; j<OUTSIZE; j++) {
+	fprintf(stderr, "P3 %d %d 255\n", size, size);
+	for(i=0; i<size; i++) {
+		for(j=0; j<size; j++) {
 			colour t = pgm[i][j];
 			fprintf(stderr, "%d %d %d ", t.r, t.g, t.b);
 			if (j % 15 == 14) { fprintf(stderr, "\n"); }
