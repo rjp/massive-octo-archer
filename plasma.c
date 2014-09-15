@@ -2,12 +2,13 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <sys/queue.h>
 #include <assert.h>
+#include <getopt.h>
 
-#define MAXPOINTS 32768
-#define OUTSIZE 1024
+#define OUTSIZE 512
 #ifdef DEBUG
-#define debug(M, ...) fprintf(stderr, "DEBUG %s:%d: " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#define debug(M, ...) fprintf(stdout, "DEBUG %s:%d: " M, __FILE__, __LINE__, ##__VA_ARGS__)
 #else
 #define debug(M, ...)
 #endif
@@ -33,16 +34,27 @@ colour c_snow  = { 255, 255, 255, 1 };
 colour c_bork  = { 255, 0, 0, 1};
 
 /* Strictly a ppm now but meh */
-colour pgm[OUTSIZE][OUTSIZE];
+colour **pgm;
 
 typedef struct { float x; float y; float h; int iteration; int parent; colour c; } point;
-typedef struct { point points[MAXPOINTS]; int howmany; } landscape;
+typedef struct { int howmany; } landscape;
+
+/* Define a linked list of points */
+struct list_item { point p; TAILQ_ENTRY(list_item) entries; };
+/* We need an iteration pointer */
+struct list_item *np, *np_2;
+
+/* List of points we've created and interpolated */
+TAILQ_HEAD(mainlist_h, list_item);
 
 /* Working array for temporary points */
-point temp[MAXPOINTS];
+TAILQ_HEAD(templist_h, list_item);
+
 int temp_howmany;
 
 int greyscale = 0;
+
+double *dsq;
 
 /* Lifted from
  * http://phoxis.org/2013/05/04/generating-random-numbers-from-normal-distribution-in-c/
@@ -99,25 +111,27 @@ randi(int maxi)
 }
 
 void
-dump_points(landscape w)
+dump_points(struct mainlist_h *l)
 {
-	int i;
-	for(i=0; i<w.howmany; i++) {
-		debug("%d = <%.3f,%.3f,%.3f> g=%d p=%d\n", i, w.points[i].x, w.points[i].y, w.points[i].h, w.points[i].iteration, w.points[i].parent);
+	int i = 0;
+    TAILQ_FOREACH(np, l, entries) {
+		debug("[MAIN] %d = <%.3f,%.3f,%.3f> g=%d p=%d\n", i, np->p.x, np->p.y, np->p.h, np->p.iteration, np->p.parent);
+        i++;
 	}
 }
 
 void
-dump_temp()
+dump_temp(struct templist_h *l)
 {
-	int i;
-	for(i=0; i<temp_howmany; i++) {
-		debug("%d = <%.3f,%.3f,%.3f> g=%d p=%d\n", i, temp[i].x, temp[i].y, temp[i].h, temp[i].iteration, temp[i].parent);
+	int i = 0;
+    TAILQ_FOREACH(np, l, entries) {
+		debug("[TEMP] %d = <%.3f,%.3f,%.3f> g=%d p=%d\n", i, np->p.x, np->p.y, np->p.h, np->p.iteration, np->p.parent);
+        i++;
 	}
 }
 
-typedef struct { double d; int i; } di;
-di sorted[MAXPOINTS];
+typedef struct { double d; int i; double h; } di;
+di *sorted;
 
 int
 compare_dist(const void *a, const void *b)
@@ -240,38 +254,45 @@ colour_by_height(double unscaled_height)
 
 
 void
-interpolate(point t[], int howmany, landscape w, int generation)
+interpolate(struct templist_h *t, int howmany, struct mainlist_h *m, int w_howmany, int generation)
 {
-	int i,j;
+	int i=0,j;
 	double reduction = pow(0.5, generation);
 	
 debug("generation %d, %d world points, %d temp points\n", generation, w.howmany, howmany);
 
-	for(i=0; i<howmany; i++) {
-		double dsq[MAXPOINTS]; /* enough headroom */
+    /* Loop over the templist to process each new point */
+    TAILQ_FOREACH(np, t, entries) {
 		double total_d = 0.0;
-		point ip = t[i];
+		point ip = np->p;
 		double i_height = 0.0;
 debug("interpolating new point %d: ", i);
 
+        int j = 0;
+
 		/* First we work out the individual distances and store them */
-		for(j=0; j<w.howmany; j++) {	
-			point wp = w.points[j];
+        TAILQ_FOREACH(np_2, m, entries) {
+			point wp = np_2->p;
 			double d = pow(wp.x-ip.x,2) + pow(wp.y-ip.y,2);
-			sorted[j] = (di){ d, j };
-debug("<%d, %.4f, %.4f> ", j, d, wp.h);
+            if (d > 0.0) {
+                sorted[j] = (di){ d, j, wp.h };
+    debug("[PDIST] <%d, %.4f, %.4f> <%.3f,%.3f> <=> <%.3f,%.3f> %s\n", j, d, wp.h, wp.x,wp.y, ip.x,ip.y, (wp.x==ip.x && wp.y==ip.y) ? "SAME" : "NOSAME");
+                j++;
+            }
 		}
 
-		qsort(sorted, w.howmany, sizeof(di), compare_dist);
-debug("<%d, %.4f>\n", sorted[0].i, sorted[0].d);
+        assert(w_howmany > 0);
+		qsort(sorted, w_howmany, sizeof(di), compare_dist);
+debug("[MINDIST] <%d, %.4f>\n", sorted[0].i, sorted[0].d);
 			
 		/* We only get here after one generation of spawning which
 		   means we have at least 12 points to consider
  		*/
-		int lim = w.howmany > 10 ? 10 : w.howmany;
+		int lim = w_howmany > 10 ? 10 : w_howmany;
 
 		for(j=0; j<lim; j++) {
 			double d = sorted[j].d;
+            debug("[DIST] %d = %.3f (h=%.3f)\n", j, d, sorted[j].h);
 			if (d > 0.0) { /* && d < 1.0) { */
 				double dr2 = 1.0 / pow(d, 2);
 				total_d = total_d + dr2;
@@ -287,43 +308,106 @@ debug("%d points, total=%.4f, first=%.4f ratio=%.4f\n", lim, total_d, sorted[0].
 		for(j=0; j<lim; j++) {
 			double r = dsq[j];
 /*			double n_height = w.points[j].h * r; */
-			double n_height = w.points[sorted[j].i].h * r;
+			double n_height = sorted[j].h * r;
 			i_height = i_height + n_height;
 debug("point %d, h=%.4f, invsqlaw=%.4f, adding=%.4f, total=%.4f\n", j, w.points[j].h, r, n_height, i_height);
 		}
 
-		t[i].h = i_height / total_d;
+        assert(total_d != 0);
+		np->p.h = i_height / total_d;
 
 debug("final height = %.4f / %.4f = %.4f\n", i_height, total_d, t[i].h);
 
- 		t[i].h = t[i].h + reduction * 0.1 * m1_p1(); 
-		t[i].c = colour_by_height(t[i].h);
+        assert(!isnan(np->p.h));
+ 		np->p.h = np->p.h + reduction * 0.1 * m1_p1(); 
+		np->p.c = colour_by_height(np->p.h);
 	}
 }
 
 int main(int argc, char **argv) {
 	int i, j, q, gen;
 	landscape world;
-	int seed = time(NULL);
+	static int seed;
+    int initial_points = 5;
+    static int iterations = 6;
+    int maxpoints = initial_points;
+    struct mainlist_h mainlist = TAILQ_HEAD_INITIALIZER(mainlist);
+    struct templist_h templist = TAILQ_HEAD_INITIALIZER(templist);
+    static int size = OUTSIZE;
+    static double span = 0.75;
 
-	if (argc > 1) {
-		seed = atoi(argv[1]);
-		debug("SEED %d\n", seed);
-	}
+    seed = time(NULL);
 
+    int c;
+    while (1) {
+        static struct option long_options[] = {
+            {"iterations", optional_argument, &iterations, 'i'},
+            {"size", optional_argument, &size, 'w'},
+            {"seed", optional_argument, &seed, 's'},
+            {"span", optional_argument, &span, 'v'},
+            {0, 0, 0, 0}
+        };
+        int option_index = 0;
+        c = getopt_long(argc, argv, "i:s:w:v:", long_options, &option_index);
+
+        if (c == -1) { break; }
+
+        switch(c) {
+            case 'i':
+                printf("ITERATIONS = %s\n", optarg);
+                iterations = atoi(optarg);
+                break;
+            case 'w':
+                printf("OUTSIZE = %s\n", optarg);
+                size = atoi(optarg);
+                break;
+            case 's':
+                printf("SEED = %s\n", optarg);
+                seed = atoi(optarg);
+                break;
+            case 'v':
+                printf("SPAN = %s\n", optarg);
+                span = atof(optarg);
+                break;
+
+            default:
+                abort();
+        }
+    }
+
+    for(i=1; i<iterations; i++) {
+        maxpoints = maxpoints + 3*maxpoints;
+    }
+    printf("MAXPOINTS FOR n=%d, i=%d is %d\n", initial_points, iterations, maxpoints);
+
+    dsq = (double *)malloc((maxpoints+1)*sizeof(double));
+    assert(dsq != NULL);
+
+    sorted = (di *)malloc((maxpoints+1)*sizeof(di));
+    assert(sorted != NULL);
+
+    colour (*pgm)[size] = malloc(sizeof *pgm * size);
+    assert(pgm != NULL);
+
+    debug("SEED %d\n", seed);
 	srand(seed);
 
 	/* Generate the initial set of 3 points around the origin */
-	for(i=0; i<5; i++) {
-		world.points[i] = (point){
-			0.25*m1_p1(), 0.25*m1_p1(), 0.1*m1_p1(), 0, -1
+	for(i=0; i<initial_points; i++) {
+        struct list_item *f = malloc(sizeof(struct list_item));
+		point new_point = (point){
+			0.25*m1_p1(), 0.25*m1_p1(), 0.1*m1_p1(), 0, -1, {-1,-1,-1}
 		};
-		world.points[i].c = colour_by_height(world.points[i].h);
-		world.howmany = i+1;
-	}
-	/* dump_points(world); */
+		new_point.c = colour_by_height(new_point.h);
+        f->p = new_point;
+        TAILQ_INSERT_TAIL(&mainlist, f, entries);
 
-	for(gen=1; gen<6; gen++) {
+		world.howmany = i+1;
+
+	}
+	dump_points(&mainlist);
+
+	for(gen=1; gen<iterations; gen++) {
 		double reduction = pow(0.8, gen);
 
 			/* Iteration step */
@@ -335,8 +419,19 @@ int main(int argc, char **argv) {
 			/* 1. Generate parent points for 3x new points */
 			for(i=0; i<3*world.howmany; i++) {
 				int parent_index = randi(world.howmany);
-				point parent = world.points[parent_index];
-				temp[i] = (point){ 
+                int q = -1;
+				point parent;
+
+                TAILQ_FOREACH(np, &mainlist, entries) {
+                    q++;
+                    if (q == parent_index) {
+                        parent = np->p;
+                        break;
+                    }
+                }
+                assert(q == parent_index);
+
+				point new_point = (point){ 
 					fmax( fmin( parent.x + reduction*0.5*m1_p1(), 1 ), -1 ),
 					fmax( fmin( parent.y + reduction*0.5*m1_p1(), 1 ), -1 ),
 					parent.h,
@@ -344,27 +439,37 @@ int main(int argc, char **argv) {
 					parent_index,
                     (colour){-1,-1,-1} 
 				};
+                debug("[NEWP] %.3f\n", parent.h);
+                struct list_item *f = malloc(sizeof(struct list_item));
+                f->p = new_point;
+
+                TAILQ_INSERT_TAIL(&templist, f, entries);
 				temp_howmany++;
 			}
 
 			/* Interpolate the heights on the new points based on the old points */
-			interpolate(temp, temp_howmany, world, gen);
+			interpolate(&templist, temp_howmany, &mainlist, world.howmany, gen);
 
 			/* Push the new points onto the end of the old points */
-			for(i=0; i<temp_howmany; i++) {
-                temp[i].c = colour_by_height(temp[i].h);
-                debug("new point %d has height %.2f and <%d,%d,%d>\n", i, temp[i].h, temp[i].c.r, temp[i].c.g, temp[i].c.b);
-				world.points[world.howmany] = temp[i];
-				world.howmany++;
-			}
+            TAILQ_FOREACH(np, &templist, entries) {
+                np->p.c = colour_by_height(np->p.h);
+//                debug("new point %d has height %.2f and <%d,%d,%d>\n", i, temp[i].h, temp[i].c.r, temp[i].c.g, temp[i].c.b);
+            }
+
+            dump_temp(&templist);
+
+            TAILQ_CONCAT(&mainlist, &templist, entries);
+            world.howmany = world.howmany + temp_howmany;
+
+            dump_points(&mainlist);
 	}
 
 	/* dump_points(world); */
 debug("World has %d points\n", world.howmany);
 	/* pgm_voronoi(world); */
 
-	for(i=0; i<OUTSIZE; i++) {
-		for(j=0; j<OUTSIZE; j++) {
+	for(i=0; i<size; i++) {
+		for(j=0; j<size; j++) {
 			pgm[i][j] = c_blank;
 		}
 	}
@@ -383,22 +488,21 @@ debug("World has %d points\n", world.howmany);
 	}
 #endif
 
-    double span = 0.75;
     double span2 = 2*span;
 
-	for(i=0; i<OUTSIZE; i++) {
-		for(j=0; j<OUTSIZE; j++) {
+	for(i=0; i<size; i++) {
+		for(j=0; j<size; j++) {
             /* Uncoloured pixel needs voronoising */
             double min_dist = 999.0;
             point *min_point = NULL;
-            double tx = -span + (span2*i)/OUTSIZE;
-            double ty = -span + (span2*j)/OUTSIZE;
+            double tx = -span + (span2*i)/size;
+            double ty = -span + (span2*j)/size;
 
-            for(q=0; q<world.howmany; q++) {
-                point p = world.points[q];
+            TAILQ_FOREACH(np, &mainlist, entries) {
+                point p = np->p;
                 double d = pow(p.x-tx,2) + pow(p.y-ty,2);
                 debug("<%.2f,%.2f> <=> <%.2f,%.2f> = %.5f (%.5f)\n", tx,ty, p.x,p.y, d, min_dist);
-                if (d < min_dist) { min_dist = d; min_point = &(world.points[q]); }
+                if (d < min_dist) { min_dist = d; min_point = &(np->p); }
             }
             assert(min_point != NULL);
 
@@ -411,9 +515,9 @@ debug("World has %d points\n", world.howmany);
 		}
 	}
 
-	fprintf(stderr, "P3 %d %d 255\n", OUTSIZE, OUTSIZE);
-	for(i=0; i<OUTSIZE; i++) {
-		for(j=0; j<OUTSIZE; j++) {
+	fprintf(stderr, "P3 %d %d 255\n", size, size);
+	for(i=0; i<size; i++) {
+		for(j=0; j<size; j++) {
 			colour t = pgm[i][j];
 			fprintf(stderr, "%d %d %d ", t.r, t.g, t.b);
 			if (j % 15 == 14) { fprintf(stderr, "\n"); }
