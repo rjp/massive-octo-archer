@@ -15,12 +15,12 @@
 
 #define OUTHEIGHT 255
 
-double l_ocean = 0.10;
-double l_water = 0.20;
-double l_sand  = 0.25;
-double l_dirt  = 0.65;
-double l_rocks = 0.70;
-double l_snow  = 0.80;
+float l_ocean = 0.10;
+float l_water = 0.20;
+float l_sand  = 0.25;
+float l_dirt  = 0.65;
+float l_rocks = 0.70;
+float l_snow  = 0.80;
 
 typedef struct { int r; int g; int b; int a; } colour;
 colour c_blank = { 0, 0, 0, 0 };
@@ -54,28 +54,28 @@ int temp_howmany;
 
 int greyscale = 0;
 
-double *dsq;
+float *dsq;
 
 /* Lifted from
  * http://phoxis.org/2013/05/04/generating-random-numbers-from-normal-distribution-in-c/
  */
-double
-randn (double mu, double sigma)
+float
+randn (float mu, float sigma)
 {
-  double U1, U2, W, mult;
-  static double X1, X2;
+  float U1, U2, W, mult;
+  static float X1, X2;
   static int call = 0;
 
   if (call == 1)
     {
       call = !call;
-      return (mu + sigma * (double) X2);
+      return (mu + sigma * (float) X2);
     }
 
   do
     {
-      U1 = -1 + ((double) rand () / RAND_MAX) * 2;
-      U2 = -1 + ((double) rand () / RAND_MAX) * 2;
+      U1 = -1 + ((float) rand () / RAND_MAX) * 2;
+      U2 = -1 + ((float) rand () / RAND_MAX) * 2;
       W = pow (U1, 2) + pow (U2, 2);
     }
   while (W >= 1 || W == 0);
@@ -86,13 +86,13 @@ randn (double mu, double sigma)
 
   call = !call;
 
-  return (mu + sigma * (double) X1);
+  return (mu + sigma * (float) X1);
 }
 
-double
+float
 m1_p1(void)
 {
-	double n = randn(0.0, 1.0);
+	float n = randn(0.0, 1.0);
 	return n;	
 }
 
@@ -100,8 +100,8 @@ m1_p1(void)
 int
 randi(int maxi)
 {
-	double n = rand();
-	double n_scaled = n / (RAND_MAX+1.0);
+	float n = rand();
+	float n_scaled = n / (RAND_MAX+1.0);
 	int to_scale = n_scaled * maxi;
 	
 	assert(to_scale > -1);
@@ -130,7 +130,7 @@ dump_temp(struct templist_h *l)
 	}
 }
 
-typedef struct { double d; int i; double h; } di;
+typedef struct { float d; int i; float h; } di;
 di *sorted;
 
 int
@@ -215,9 +215,9 @@ clamp(int in, int low, int high)
 }
 
 colour
-colour_by_height(double unscaled_height)
+colour_by_height(float unscaled_height)
 {
-	double scaled_height = fmax( fmin( (unscaled_height + 0.2)/0.4, 1.0 ), 0.0 );
+	float scaled_height = fmax( fmin( (unscaled_height + 0.2)/0.4, 1.0 ), 0.0 );
 	colour blocks = colour_of_grass();
 
 	if (greyscale) {
@@ -237,15 +237,15 @@ colour_by_height(double unscaled_height)
 		blocks = c_ocean;
 	}
 
-	if (scaled_height > l_dirt) { 
+	if (scaled_height > l_dirt) {
 		blocks = colour_of_dirt();
 	}
 
-	if (scaled_height > l_rocks) { 
+	if (scaled_height > l_rocks) {
 		blocks = colour_of_rocks();
 	}
 
-	if (scaled_height > l_snow) { 
+	if (scaled_height > l_snow) {
 		 blocks = colour_of_snow();
 	}
 
@@ -257,32 +257,43 @@ void
 interpolate(struct templist_h *t, int howmany, struct mainlist_h *m, int w_howmany, int generation)
 {
 	int i=0,j;
-	double reduction = pow(0.5, generation);
+	float reduction = pow(0.5, generation);
 	
 debug("generation %d, %d world points, %d temp points\n", generation, w.howmany, howmany);
 
     /* Loop over the templist to process each new point */
     TAILQ_FOREACH(np, t, entries) {
-		double total_d = 0.0;
+		float total_d = 0.0;
 		point ip = np->p;
-		double i_height = 0.0;
+		float i_height = 0.0;
 debug("interpolating new point %d: ", i);
 
         int j = 0;
+        int q = 0;
+        float max_dist = 99999.0;
 
 		/* First we work out the individual distances and store them */
         TAILQ_FOREACH(np_2, m, entries) {
 			point wp = np_2->p;
-			double d = pow(wp.x-ip.x,2) + pow(wp.y-ip.y,2);
+            float xd = (wp.x-ip.x);
+            float yd = (wp.y-ip.y);
+			float d = xd*xd + yd*yd;
+
             if (d > 0.0) {
-                sorted[j] = (di){ d, j, wp.h };
-    debug("[PDIST] <%d, %.4f, %.4f> <%.3f,%.3f> <=> <%.3f,%.3f> %s\n", j, d, wp.h, wp.x,wp.y, ip.x,ip.y, (wp.x==ip.x && wp.y==ip.y) ? "SAME" : "NOSAME");
-                j++;
+                /* We want the first 10 and then only ones closer */
+                if (q < 10) {
+                    sorted[j] = (di){ d, j, wp.h };
+        debug("[PDIST] <%d, %.4f, %.4f> <%.3f,%.3f> <=> <%.3f,%.3f> %s\n", j, d, wp.h, wp.x,wp.y, ip.x,ip.y, (wp.x==ip.x && wp.y==ip.y) ? "SAME" : "NOSAME");
+                    j++;
+                    if (d < max_dist) { max_dist = d; }
+                    q++;
+                }
             }
+
 		}
 
         assert(w_howmany > 0);
-		qsort(sorted, w_howmany, sizeof(di), compare_dist);
+		// qsort(sorted, j, sizeof(di), compare_dist);
 debug("[MINDIST] <%d, %.4f>\n", sorted[0].i, sorted[0].d);
 			
 		/* We only get here after one generation of spawning which
@@ -291,10 +302,10 @@ debug("[MINDIST] <%d, %.4f>\n", sorted[0].i, sorted[0].d);
 		int lim = w_howmany > 10 ? 10 : w_howmany;
 
 		for(j=0; j<lim; j++) {
-			double d = sorted[j].d;
+			float d = sorted[j].d;
             debug("[DIST] %d = %.3f (h=%.3f)\n", j, d, sorted[j].h);
 			if (d > 0.0) { /* && d < 1.0) { */
-				double dr2 = 1.0 / pow(d, 2);
+				float dr2 = 1.0 / pow(d, 2);
 				total_d = total_d + dr2;
 				dsq[j] = dr2;
 			}
@@ -306,9 +317,9 @@ debug("[MINDIST] <%d, %.4f>\n", sorted[0].i, sorted[0].d);
 debug("%d points, total=%.4f, first=%.4f ratio=%.4f\n", lim, total_d, sorted[0].d, 1.0/(pow(sorted[0].d,2)));
 
 		for(j=0; j<lim; j++) {
-			double r = dsq[j];
-/*			double n_height = w.points[j].h * r; */
-			double n_height = sorted[j].h * r;
+			float r = dsq[j];
+/*			float n_height = w.points[j].h * r; */
+			float n_height = sorted[j].h * r;
 			i_height = i_height + n_height;
 debug("point %d, h=%.4f, invsqlaw=%.4f, adding=%.4f, total=%.4f\n", j, w.points[j].h, r, n_height, i_height);
 		}
@@ -319,7 +330,7 @@ debug("point %d, h=%.4f, invsqlaw=%.4f, adding=%.4f, total=%.4f\n", j, w.points[
 debug("final height = %.4f / %.4f = %.4f\n", i_height, total_d, t[i].h);
 
         assert(!isnan(np->p.h));
- 		np->p.h = np->p.h + reduction * 0.1 * m1_p1(); 
+ 		np->p.h = np->p.h + reduction * 0.1 * m1_p1();
 		np->p.c = colour_by_height(np->p.h);
 	}
 }
@@ -334,7 +345,7 @@ int main(int argc, char **argv) {
     struct mainlist_h mainlist = TAILQ_HEAD_INITIALIZER(mainlist);
     struct templist_h templist = TAILQ_HEAD_INITIALIZER(templist);
     static int size = OUTSIZE;
-    static double span = 0.75;
+    static float span = 0.75;
 
     seed = time(NULL);
 
@@ -380,7 +391,7 @@ int main(int argc, char **argv) {
     }
     printf("MAXPOINTS FOR n=%d, i=%d is %d\n", initial_points, iterations, maxpoints);
 
-    dsq = (double *)malloc((maxpoints+1)*sizeof(double));
+    dsq = (float *)malloc((maxpoints+1)*sizeof(float));
     assert(dsq != NULL);
 
     sorted = (di *)malloc((maxpoints+1)*sizeof(di));
@@ -408,7 +419,7 @@ int main(int argc, char **argv) {
 	dump_points(&mainlist);
 
 	for(gen=1; gen<iterations; gen++) {
-		double reduction = pow(0.8, gen);
+		float reduction = pow(0.8, gen);
 
 			/* Iteration step */
 			debug("Iteration step %d\n", gen);
@@ -431,14 +442,29 @@ int main(int argc, char **argv) {
                 }
                 assert(q == parent_index);
 
-				point new_point = (point){ 
+#ifdef NO_FMAX_FMIN
+                float new_x = parent.x + reduction*0.5*m1_p1();
+				float new_y = parent.y + reduction*0.5*m1_p1();
+                if (new_x < -1) { new_x = -1; }
+                if (new_x > 1) { new_x = 1; }
+                if (new_y < -1) { new_y = -1; }
+                if (new_y > 1) { new_y = 1; }
+				point new_point = (point){
+					new_x, new_y, parent.h,
+					1,
+					parent_index,
+                    (colour){-1,-1,-1}
+				};
+#else
+				point new_point = (point){
 					fmax( fmin( parent.x + reduction*0.5*m1_p1(), 1 ), -1 ),
 					fmax( fmin( parent.y + reduction*0.5*m1_p1(), 1 ), -1 ),
 					parent.h,
 					1,
 					parent_index,
-                    (colour){-1,-1,-1} 
+                    (colour){-1,-1,-1}
 				};
+#endif
                 debug("[NEWP] %.3f\n", parent.h);
                 struct list_item *f = malloc(sizeof(struct list_item));
                 f->p = new_point;
@@ -474,7 +500,7 @@ debug("World has %d points\n", world.howmany);
 		}
 	}
 
-	double min_height = 10.0, max_height = -10.0;
+	float min_height = 10.0, max_height = -10.0;
 
 #if 0
 	for(i=0; i<world.howmany; i++) {
@@ -488,19 +514,19 @@ debug("World has %d points\n", world.howmany);
 	}
 #endif
 
-    double span2 = 2*span;
+    float span2 = 2*span;
 
 	for(i=0; i<size; i++) {
 		for(j=0; j<size; j++) {
             /* Uncoloured pixel needs voronoising */
-            double min_dist = 999.0;
+            float min_dist = 999.0;
             point *min_point = NULL;
-            double tx = -span + (span2*i)/size;
-            double ty = -span + (span2*j)/size;
+            float tx = -span + (span2*i)/size;
+            float ty = -span + (span2*j)/size;
 
             TAILQ_FOREACH(np, &mainlist, entries) {
                 point p = np->p;
-                double d = pow(p.x-tx,2) + pow(p.y-ty,2);
+                float d = pow(p.x-tx,2) + pow(p.y-ty,2);
                 debug("<%.2f,%.2f> <=> <%.2f,%.2f> = %.5f (%.5f)\n", tx,ty, p.x,p.y, d, min_dist);
                 if (d < min_dist) { min_dist = d; min_point = &(np->p); }
             }
