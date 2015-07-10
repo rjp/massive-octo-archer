@@ -2,7 +2,16 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <sys/queue.h>
 #include <assert.h>
+#include <getopt.h>
+
+#define OUTSIZE 512
+#ifdef DEBUG
+#define debug(M, ...) fprintf(stdout, "DEBUG %s:%d: " M, __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+#define debug(M, ...)
+#endif
 
 /* C logging from CCAN/Junkcode from:
  * https://github.com/rustyrussell/ccan/tree/master/junkcode/henryeshbaugh%40gmail.com-log
@@ -15,12 +24,12 @@
 #define OUTSIZE 512
 #define OUTHEIGHT 255
 
-double l_ocean = 0.10;
-double l_water = 0.20;
-double l_sand  = 0.25;
-double l_dirt  = 0.65;
-double l_rocks = 0.70;
-double l_snow  = 0.80;
+float l_ocean = 0.10;
+float l_water = 0.20;
+float l_sand  = 0.25;
+float l_dirt  = 0.65;
+float l_rocks = 0.70;
+float l_snow  = 0.80;
 
 typedef struct { int r; int g; int b; int a; } colour;
 colour c_blank = { 0, 0, 0, 0 };
@@ -34,37 +43,48 @@ colour c_snow  = { 255, 255, 255, 1 };
 colour c_bork  = { 255, 0, 0, 1};
 
 /* Strictly a ppm now but meh */
-colour pgm[OUTSIZE][OUTSIZE];
+colour **pgm;
 
 typedef struct { float x; float y; float h; int iteration; int parent; colour c; } point;
-typedef struct { point points[MAXPOINTS]; int howmany; } landscape;
+typedef struct { int howmany; } landscape;
+
+/* Define a linked list of points */
+struct list_item { point p; TAILQ_ENTRY(list_item) entries; };
+/* We need an iteration pointer */
+struct list_item *np, *np_2;
+
+/* List of points we've created and interpolated */
+TAILQ_HEAD(mainlist_h, list_item);
 
 /* Working array for temporary points */
-point temp[MAXPOINTS];
+TAILQ_HEAD(templist_h, list_item);
+
 int temp_howmany;
 
 int greyscale = 0;
 
+float *dsq;
+
 /* Lifted from
  * http://phoxis.org/2013/05/04/generating-random-numbers-from-normal-distribution-in-c/
  */
-double
-randn (double mu, double sigma)
+float
+randn (float mu, float sigma)
 {
-  double U1, U2, W, mult;
-  static double X1, X2;
+  float U1, U2, W, mult;
+  static float X1, X2;
   static int call = 0;
 
   if (call == 1)
     {
       call = !call;
-      return (mu + sigma * (double) X2);
+      return (mu + sigma * (float) X2);
     }
 
   do
     {
-      U1 = -1 + ((double) rand () / RAND_MAX) * 2;
-      U2 = -1 + ((double) rand () / RAND_MAX) * 2;
+      U1 = -1 + ((float) rand () / RAND_MAX) * 2;
+      U2 = -1 + ((float) rand () / RAND_MAX) * 2;
       W = pow (U1, 2) + pow (U2, 2);
     }
   while (W >= 1 || W == 0);
@@ -75,32 +95,32 @@ randn (double mu, double sigma)
 
   call = !call;
 
-  return (mu + sigma * (double) X1);
+  return (mu + sigma * (float) X1);
 }
 
-double
+float
 m1_p1(void)
 {
-	double n = randn(0.0, 1.0);
-	return n;	
+    float n = randn(0.0, 1.0);
+    return n;
 }
 
 /* Return a uniform random range between [0,maxi) */
 int
 randi(int maxi)
 {
-	double n = rand();
-	double n_scaled = n / (RAND_MAX+1.0);
-	int to_scale = n_scaled * maxi;
-	
-	assert(to_scale > -1);
-	assert(to_scale < maxi);
+    float n = rand();
+    float n_scaled = n / (RAND_MAX+1.0);
+    int to_scale = n_scaled * maxi;
 
-	return to_scale;
+    assert(to_scale > -1);
+    assert(to_scale < maxi);
+
+    return to_scale;
 }
 
 void
-dump_points(landscape w)
+dump_points(struct mainlist_h *l)
 {
 	int i;
 	for(i=0; i<w.howmany; i++) {
@@ -109,7 +129,7 @@ dump_points(landscape w)
 }
 
 void
-dump_temp()
+dump_temp(struct templist_h *l)
 {
 	int i;
 	for(i=0; i<temp_howmany; i++) {
@@ -117,131 +137,131 @@ dump_temp()
 	}
 }
 
-typedef struct { double d; int i; } di;
-di sorted[MAXPOINTS];
+typedef struct { float d; int i; float h; } di;
+di *sorted;
 
 int
 compare_dist(const void *a, const void *b)
 {
-	const di *va = a;
-	const di *vb = b;
+    const di *va = a;
+    const di *vb = b;
 
-	if (vb->d > va->d) { return -1; }
-	if (vb->d < va->d) { return +1; }
-	return 0;
+    if (vb->d > va->d) { return -1; }
+    if (vb->d < va->d) { return +1; }
+    return 0;
 }
 
 colour
 shade_of_x(int r, int g, int b, int ratio)
 {
-	int m = randi(2*ratio) - ratio;
-	r = fmax(0, fmin(255, r + m));
-	g = fmax(0, fmin(255, g + m));
-	b = fmax(0, fmin(255, b + m));
-	return (colour){ r, g, b, 1 };
+    int m = randi(2*ratio) - ratio;
+    r = fmax(0, fmin(255, r + m));
+    g = fmax(0, fmin(255, g + m));
+    b = fmax(0, fmin(255, b + m));
+    return (colour){ r, g, b, 1 };
 }
 
 colour
 colour_of_x(int r, int g, int b, int rr, int gr, int br)
 {
-	r = fmax(0, fmin(255, r + randi(2*rr) - rr));
-	g = fmax(0, fmin(255, g + randi(2*gr) - gr));
-	b = fmax(0, fmin(255, b + randi(2*br) - br));
-	return (colour){ r, g, b, 1 };
+    r = fmax(0, fmin(255, r + randi(2*rr) - rr));
+    g = fmax(0, fmin(255, g + randi(2*gr) - gr));
+    b = fmax(0, fmin(255, b + randi(2*br) - br));
+    return (colour){ r, g, b, 1 };
 }
 
 colour
 colour_of_dirt(void)
 {
-	return shade_of_x(c_dirt.r, c_dirt.g, c_dirt.b, 32);
+    return shade_of_x(c_dirt.r, c_dirt.g, c_dirt.b, 32);
 }
 
 colour
 colour_of_grass(void)
 {
-	/* 1d20 > 18 for grass -> dirt transformation */
-	if (randi(20) > 19) {
-		return colour_of_dirt();
-	}
-		
-	return colour_of_x(32, 192, 32, 32, 32, 32);
+    /* 1d20 > 18 for grass -> dirt transformation */
+    if (randi(20) > 19) {
+        return colour_of_dirt();
+    }
+
+    return colour_of_x(32, 192, 32, 32, 32, 32);
 }
 
 colour
 colour_of_snow(void)
 {
-	/* We want all the sliders to move up and down in lockstep */
-	return shade_of_x(255, 255, 255, 32);
+    /* We want all the sliders to move up and down in lockstep */
+    return shade_of_x(255, 255, 255, 32);
 }
 
 colour
 colour_of_rocks(void)
 {
-	return shade_of_x(c_rocks.r, c_rocks.g, c_rocks.b, 32);
+    return shade_of_x(c_rocks.r, c_rocks.g, c_rocks.b, 32);
 }
 
 colour
 colour_of_sand(void)
 {
-	return shade_of_x(c_sand.r, c_sand.g, c_sand.b, 16);
+    return shade_of_x(c_sand.r, c_sand.g, c_sand.b, 16);
 }
 
 colour
 colour_of_water(void)
 {
-	return colour_of_x(c_water.r, c_water.g, c_water.b, 32, 32, 32);
+    return colour_of_x(c_water.r, c_water.g, c_water.b, 32, 32, 32);
 }
 
 /* We need a clever multi-stage MACRO here to auto-generate these for us */
 int
 clamp(int in, int low, int high)
 {
-	if (in < low) { return low; }
-	if (in > high) { return high; }
-	return in;
+    if (in < low) { return low; }
+    if (in > high) { return high; }
+    return in;
 }
 
 colour
-colour_by_height(double unscaled_height)
+colour_by_height(float unscaled_height)
 {
-	double scaled_height = fmax( fmin( (unscaled_height + 0.2)/0.4, 1.0 ), 0.0 );
-	colour blocks = colour_of_grass();
+    float scaled_height = fmax( fmin( (unscaled_height + 0.2)/0.4, 1.0 ), 0.0 );
+    colour blocks = colour_of_grass();
 
-	if (greyscale) {
-		int x = clamp((int)(OUTHEIGHT * scaled_height), 0, OUTHEIGHT);
-		return (colour){x, x, x, 1};
-	}
+    if (greyscale) {
+        int x = clamp((int)(OUTHEIGHT * scaled_height), 0, OUTHEIGHT);
+        return (colour){x, x, x, 1};
+    }
 
-	if (scaled_height < l_sand) {
-		blocks = colour_of_sand();
-	}
+    if (scaled_height < l_sand) {
+        blocks = colour_of_sand();
+    }
 
-	if (scaled_height < l_water) {
-		blocks = colour_of_water();
-	}
+    if (scaled_height < l_water) {
+        blocks = colour_of_water();
+    }
 
-	if (scaled_height < l_ocean) {
-		blocks = c_ocean;
-	}
+    if (scaled_height < l_ocean) {
+        blocks = c_ocean;
+    }
 
-	if (scaled_height > l_dirt) { 
-		blocks = colour_of_dirt();
-	}
+    if (scaled_height > l_dirt) {
+        blocks = colour_of_dirt();
+    }
 
-	if (scaled_height > l_rocks) { 
-		blocks = colour_of_rocks();
-	}
+    if (scaled_height > l_rocks) {
+        blocks = colour_of_rocks();
+    }
 
-	if (scaled_height > l_snow) { 
-		 blocks = colour_of_snow();
-	}
+    if (scaled_height > l_snow) {
+         blocks = colour_of_snow();
+    }
 
-	return blocks;
+    return blocks;
 }
 
 
 void
-interpolate(point t[], int howmany, landscape w, int generation)
+interpolate(struct templist_h *t, int howmany, struct mainlist_h *m, int w_howmany, int generation)
 {
 	int i,j;
 	double reduction = pow(0.5, generation);
